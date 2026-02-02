@@ -142,6 +142,14 @@ class AnalyzeResponse(BaseModel):
     agent_response: str
     is_ml_used: bool
 
+@app.get("/analyze")
+def analyze_get():
+    return {
+        "status": "success",
+        "message": "Honeypot analyze endpoint is live. Use POST to analyze messages."
+    }
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_scam(request: AnalyzeRequest, api_key: str = Depends(get_api_key)):
 
