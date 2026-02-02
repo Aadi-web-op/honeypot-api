@@ -1,0 +1,23 @@
+# Live Demo Commands (PowerShell Compatible)
+# Copy these blocks into your terminal
+
+# 1. Bank Scam Simulation
+Invoke-RestMethod -Uri "http://localhost:8000/analyze" `
+  -Method Post `
+  -Headers @{"x-api-key"="hackathon-secret-key"} `
+  -ContentType "application/json" `
+  -Body '{"message": "URGENT: Your SBI account is blocked. Update PAN immediately via http://bit.ly/fake to avoid suspension.", "session_id": "demo_bank"}'
+
+# 2. Lottery Scam Simulation
+Invoke-RestMethod -Uri "http://localhost:8000/analyze" `
+  -Method Post `
+  -Headers @{"x-api-key"="hackathon-secret-key"} `
+  -ContentType "application/json" `
+  -Body '{"message": "Congrats! You won a lottery of 1 Crore. Claim now.", "session_id": "demo_lotto"}'
+
+# 3. Tech Support Scam Simulation
+Invoke-RestMethod -Uri "http://localhost:8000/analyze" `
+  -Method Post `
+  -Headers @{"x-api-key"="hackathon-secret-key"} `
+  -ContentType "application/json" `
+  -Body '{"message": "Microsoft Windows Virus Alert. Call +91 9876543210.", "session_id": "demo_tech"}'
