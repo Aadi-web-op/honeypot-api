@@ -133,11 +133,12 @@ def predict_scam(text: str) -> bool:
             logger.error(f"ML prediction failed: {e}")
     
     # 2. Fallback to keywords
-    keywords = ["bank", "verify", "blocked", "lottery", "winner", "prize", "urgent", "credit card", "kyc", "update"]
+    keywords = ["bank", "verify", "blocked", "lottery", "winner", "prize", "urgent", "credit card", "kyc", "update", "otp", "pin", "cvv", "expiry"]
     if any(keyword in text.lower() for keyword in keywords):
         return True
         
     return False
+
 
 def generate_agent_reply(history: List[Dict[str, str]], current_message: str) -> str:
     """Generates a response using Groq LLM."""
@@ -157,14 +158,6 @@ def generate_agent_reply(history: List[Dict[str, str]], current_message: str) ->
     
     # Add history
     for msg in history:
-        role = "user" if msg['sender'] == 'scammer' else "assistant"
-        # The history from request has 'sender': 'scammer'|'user'
-        # Current message sender is 'scammer' (user for LLM)
-        # Previous replies from us were 'user' (assistant for LLM)?? 
-        # Wait, request format says: 
-        # sender: 'scammer' (The person attacking us) -> LLM User
-        # sender: 'user' (Our previous replies) -> LLM Assistant
-        
         # Mapping:
         llm_role = "user" if msg['sender'] == 'scammer' else "assistant"
         messages.append({"role": llm_role, "content": msg['text']})
@@ -221,7 +214,6 @@ async def check_and_send_callback(session_id: str, history: List[Message], curre
         except Exception as e:
             logger.error(f"Failed to send callback: {e}")
 
-# --- Main Endpoint ---
 
 @app.post("/analyze")
 async def analyze(
@@ -230,18 +222,15 @@ async def analyze(
     api_key: str = Depends(verify_api_key)
 ):
     try:
-        # 1. Detect Scam
-        is_scam = predict_scam(request.message.text)
+        # Detect scam: logic is (Current Message is Scam) OR (We are already in a scam conversation)
+        current_msg_is_scam = predict_scam(request.message.text)
+        has_history = len(request.conversationHistory) > 0
+        
+        # If we have history, we assume we are already in the honey-pot flow
+        is_scam = current_msg_is_scam or has_history
         
         # 2. Extract Entities
         entities = extract_entities(request.message.text)
-        
-        # 3. Generate Agent Response
-        # If not scam, strictly speaking we might not need to reply, but the prompt says 
-        # "If scam intent is detected, the AI Agent is activated".
-        # If not scam, we can return a generic polite dismissal or just "null" status?
-        # The prompt asks for:
-        # { "status": "success", "reply": "..." }
         
         if is_scam:
             # Convert history to simple dict list for helper
@@ -273,8 +262,8 @@ async def analyze(
         }
     
     except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        logger.error(f"Error processing request: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def health():
