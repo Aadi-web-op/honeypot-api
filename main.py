@@ -99,17 +99,20 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     """Extracts entities using regex and deduplicates results."""
     
     # Improved Regex Patterns
-    # UPI: basic pattern but handled to avoid trailing dots
+    # UPI: standard pattern
     upi_pattern = r'[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}'
     
     # URL: http/https links
     url_pattern = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+(?:/[-\w./?%&=]*)?'
     
-    # Phone: 10 digit Indian mobile often starts with 6-9. 
-    phone_pattern = r'(?:\+91[\-\s]?)?[6-9]\d{9}\b' 
+    # Phone: 
+    # Match +91 XXXXXXXXXX or just XXXXXXXXXX (starting with 6-9)
+    # Critical: Use lookbehind (?<!\d) and lookahead (?!\d) to ensure we don't match substrings of account numbers
+    phone_pattern = r'(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d)'
     
-    # Bank Account: 9-18 digits. 
-    bank_account_pattern = r'\b\d{9,18}\b'
+    # Bank Account: 9-18 digits.
+    # Also use boundaries
+    bank_account_pattern = r'(?<!\d)\d{9,18}(?!\d)'
     
     # Simple keywords for suspicious terms
     suspicious_keywords_list = ["urgent", "verify", "block", "suspend", "kyc", "pan", "aadhar", "win", "lottery", "expired", "otp", "pin", "cvv", "expiry", "code"]
@@ -121,12 +124,32 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     phones = re.findall(phone_pattern, text)
     banks = re.findall(bank_account_pattern, text)
     
-    # Cleaning and Deduplication
+    # Post-processing: Filter overlaps
+    # If a number is in "phones", remove it from "banks"
+    # We need to normalize to check overlaps. 
+    # e.g. Phone "+91-9876543210" vs Bank "9876543210"
+    
+    clean_phones = sorted(list(set(phones)))
+    
+    # Normalize phones for checking against banks (remove +91, -, spaces)
+    normalized_phones = set()
+    for p in clean_phones:
+        norm = re.sub(r'\D', '', p) # remove non-digits
+        if len(norm) > 10 and norm.startswith('91'):
+            norm = norm[2:] # strip 91
+        normalized_phones.add(norm)
+
+    clean_banks = set()
+    for b in banks:
+        # Bank account shouldn't be a phone number
+        if b not in normalized_phones:
+            clean_banks.add(b)
+            
     return {
-        "bankAccounts": sorted(list(set(banks))),
+        "bankAccounts": sorted(list(clean_banks)),
         "upiIds": sorted(list(set(upis))),
         "phishingLinks": sorted(list(set(urls))),
-        "phoneNumbers": sorted(list(set(phones))),
+        "phoneNumbers": clean_phones,
         "suspiciousKeywords": found_keywords
     }
 
