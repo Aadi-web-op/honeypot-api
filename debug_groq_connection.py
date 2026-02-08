@@ -1,39 +1,35 @@
 import os
 from dotenv import load_dotenv
-from openai import OpenAI  # We switch to the universal OpenAI client
+from groq import Groq
 
-# 1. Load environment variables
+# 1. Try loading .env
+print("Loading .env...")
 load_dotenv()
-api_key = os.getenv("MY_API_KEY") # Ensure this is your OpenRouter or Together key
-base_url = "https://openrouter.ai/api/v1" # Example for OpenRouter
+api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key:
-    print("ERROR: API Key not found.")
+    print("ERROR: GROQ_API_KEY not found in environment variables.")
 else:
-    print(f"SUCCESS: Found API Key.")
+    print(f"SUCCESS: Found API Key: {api_key[:10]}...")
 
-# 2. Initialize Client
+# 2. Try initializing Groq client
 try:
-    print("Initializing Client...")
-    # We point the client to the new provider's URL
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    print("Initializing Groq client...")
+    client = Groq(api_key=api_key)
     
-    print("Sending request for MythoMax...")
-    response = client.chat.completions.create(
-        model="gryphe/mythomax-l2-13b",
+    print("Sending test request to Groq...")
+    chat_completion = client.chat.completions.create(
         messages=[
             {
                 "role": "user",
                 "content": "Say 'Hello' if you can hear me.",
             }
         ],
+        model="llama-3.3-70b-versatile",
     )
 
-    print("Response:")
-    print(response.choices[0].message.content)
+    print("Response from Groq:")
+    print(chat_completion.choices[0].message.content)
 
 except Exception as e:
-    print(f"ERROR: Connection failed. Details: {e}")
+    print(f"ERROR: Failed to connect to Groq. Details: {e}")
