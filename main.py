@@ -182,6 +182,8 @@ def generate_agent_reply(history: List[Dict[str, str]], current_message: str, kn
         missing_info.append("Website Link (URL)")
     if not known_entities.get("phoneNumbers"):
         missing_info.append("Phone Number")
+    if not known_entities.get("emailAddresses"):
+        missing_info.append("Email Address")
 
     strategy_instruction = (
         "You are playing the role of a naive but cautious user chatting with someone online. "
@@ -194,7 +196,8 @@ def generate_agent_reply(history: List[Dict[str, str]], current_message: str, kn
         strategy_instruction += (
             f"Your current goal is to cleverly trick the other person into revealing their {target}. "
             f"Invent a natural reason for needing this. For example, if you need a bank account/UPI ID, ask where exactly you should send money. "
-            f"If you need a phone number, ask for a number to call them back on. If you need a website, ask for an official link from them."
+            f"If you need a phone number, ask for a number to call them back on. If you need a website, ask for an official link from them. "
+            f"If you need an Email Address, ask for an official email address to send a confirmation receipt or screenshot to."
         )
     else:
         strategy_instruction += (
