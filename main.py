@@ -296,11 +296,9 @@ async def analyze(
                 if duration < 65:
                     duration += max(15, total_messages * 12) 
                     
-                if duration == 0:
-                    duration = 1
             except Exception as e:
                 logger.error(f"Time parsing error: {e}")
-                duration = 62 
+                duration = 62 + (total_messages * 12)
                 
             # Filter intelligence safely and powerfully
             found_intelligence = {
