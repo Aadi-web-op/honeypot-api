@@ -104,11 +104,11 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     # UPI format (e.g. name@bank, phone@upi)
     upi_pattern = r'[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}'
     
-    # URL / Phishing Links
-    url_pattern = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+(?:/[-\w./?%&=]*)?'
+    # URL / Phishing Links (handles http/https and raw www. links)
+    url_pattern = r'(?:https?://|www\.)(?:[-\w.]|(?:%[\da-fA-F]{2}))+(?:/[-\w./?%&=]*)?'
     
-    # Phone numbers (matching India forms and international standard broadly)
-    phone_pattern = r'(?:\+91[\-\s]?)?[6-9]\d{9}'
+    # Phone numbers: optionally matching country code + 10 digits, or XXX-XXX-XXXX format
+    phone_pattern = r'(?:\+\d{1,3}[\-\s]?)?\d{10}|(?:\+\d{1,3}[\-\s]?)?\d{3}[\-\s]\d{3}[\-\s]\d{4}'
     
     # Bank Account (9-18 digits isolated)
     bank_account_pattern = r'\b\d{9,18}\b'
@@ -116,10 +116,6 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     # Email addresses
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
     
-    # Simple keywords for suspicious terms mapping (optional logic, not strict requirement)
-    suspicious_keywords_list = ["urgent", "verify", "block", "suspend", "kyc", "pan", "aadhar", "win", "lottery", "expired", "otp", "pin", "cvv", "expiry", "code"]
-    found_keywords = list(set([word for word in suspicious_keywords_list if word in text.lower()]))
-
     # Extraction
     upis = re.findall(upi_pattern, text)
     urls = re.findall(url_pattern, text)
@@ -133,9 +129,10 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     normalized_phones = set()
     for p in clean_phones:
         norm = re.sub(r'\D', '', p) 
-        if len(norm) > 10 and norm.startswith('91'):
-            norm = norm[2:] 
-        normalized_phones.add(norm)
+        if len(norm) >= 10:
+            if norm.startswith('91') and len(norm) > 10:
+                norm = norm[2:] 
+            normalized_phones.add(norm)
 
     clean_banks = set()
     for b in banks:
@@ -153,8 +150,7 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
         "upiIds": sorted(list(set(upis))),
         "phishingLinks": sorted(list(set(urls))),
         "phoneNumbers": clean_phones,
-        "emailAddresses": sorted(list(clean_emails)),
-        "suspiciousKeywords": found_keywords
+        "emailAddresses": sorted(list(clean_emails))
     }
 
 def predict_scam(text: str) -> bool:
@@ -181,29 +177,28 @@ def generate_agent_reply(history: List[Dict[str, str]], current_message: str, kn
     if not known_entities.get("bankAccounts"):
         missing_info.append("Bank Account Number")
     if not known_entities.get("upiIds"):
-        missing_info.append("UPI ID (e.g., your app handle)")
+        missing_info.append("UPI ID")
     if not known_entities.get("phishingLinks"):
         missing_info.append("Website Link (URL)")
     if not known_entities.get("phoneNumbers"):
         missing_info.append("Phone Number")
 
     strategy_instruction = (
-        "STRATEGY: You are an elderly, slightly confused but polite person called Edna. "
-        "You are chatting with a suspected scammer. Never admit to being an AI. "
+        "You are playing the role of a naive but cautious user chatting with someone online. "
+        "Never admit to being an AI or a honeypot. Keep your responses to exactly 1 or 2 short sentences. "
     )
     
     if missing_info:
-        top_targets = missing_info[:2]
+        # Pick just one target to avoid sounding unnatural by asking for too many things at once
+        target = missing_info[0]
         strategy_instruction += (
-            f"GOAL: Your objective is to trick the scammer into revealing the following information: {', '.join(top_targets)}. "
-            f"Invent realistic excuses to ask for these details (e.g. 'Can I get your phone number so my son can call you back?', "
-            f"'Do you have a secure website link I can use instead?'). "
-            f"Keep your message to exactly 1 or 2 short, natural sentences."
+            f"Your current goal is to cleverly trick the other person into revealing their {target}. "
+            f"Invent a natural reason for needing this. For example, if you need a bank account/UPI ID, ask where exactly you should send money. "
+            f"If you need a phone number, ask for a number to call them back on. If you need a website, ask for an official link from them."
         )
     else:
         strategy_instruction += (
-            "GOAL: Keep them talking. Act naive. Say you are still trying to follow their instructions, "
-            "but having technical difficulties. Keep your message to exactly 1 or 2 short sentences."
+            "Keep the conversation going. Act like you are following their instructions but encountering a minor technical issue. "
         )
 
     try:
@@ -226,7 +221,7 @@ def generate_agent_reply(history: List[Dict[str, str]], current_message: str, kn
         
     except Exception as e:
         logger.error(f"Gemini generation failed: {e}")
-        return "Oh dear, I didn't quite catch that. My hearing aid is acting up. Could you provide a phone number I can call you on?"
+        return "Oh dear, I didn't quite catch that. My device is acting up. Could you provide a phone number I can call you on?"
 
 async def send_callback(session_id: str, payload: Dict):
     """Sends the pre-constructed callback payload to the hackathon webhook."""
@@ -261,7 +256,8 @@ async def analyze(
         # The base response format expected by some platforms
         response_dict = {
             "status": "success",
-            "reply": agent_reply
+            "reply": agent_reply,
+            "scamDetected": is_scam
         }
 
         if is_scam:
@@ -312,24 +308,27 @@ async def analyze(
                 "emailAddresses": all_entities.get("emailAddresses", [])
             }
             
-            # 100-Point Score Payload Structure
-            payload = {
-                "status": "success",
+            # Top-level score requirements
+            response_dict["extractedIntelligence"] = found_intelligence
+            response_dict["engagementMetrics"] = {
+                "engagementDurationSeconds": duration,
+                "totalMessagesExchanged": total_messages
+            }
+            response_dict["totalMessagesExchanged"] = total_messages
+            response_dict["agentNotes"] = "Scammer engaged and detected via Gemini AI. Contextual intelligence gathered."
+            response_dict["sessionId"] = request.sessionId
+            
+            # Final output submission format nested exactly as requested for fallback
+            response_dict["finalOutput"] = {
                 "sessionId": request.sessionId,
                 "scamDetected": True,
+                "totalMessagesExchanged": total_messages,
                 "extractedIntelligence": found_intelligence,
-                "engagementMetrics": {
-                    "engagementDurationSeconds": duration,
-                    "totalMessagesExchanged": total_messages
-                },
-                "agentNotes": "Scammer engaged and detected via Gemini AI. Intelligence extracted based on rules."
+                "agentNotes": response_dict["agentNotes"]
             }
             
-            # Embed the finalJSON strictly inside the HTTP response itself for testing platforms that parse responses directly
-            response_dict["final_payload"] = payload
-            
-            # Also dispatch strictly in the background as mandated by webhook rules
-            background_tasks.add_task(send_callback, request.sessionId, payload)
+            # Dispatch strictly in the background as mandated by webhook rules
+            background_tasks.add_task(send_callback, request.sessionId, response_dict)
 
         return response_dict
     
