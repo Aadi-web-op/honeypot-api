@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Constants
 API_KEY = "honeypot_key_2026_eval"
 CALLBACK_URL = "https://hackathon.guvi.in/api/updateHoneyPotFinalResult"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyCdPSauaULL5jXpq9eunDjAQVaVnrbwq54")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize Gemini Client globally
 if GEMINI_API_KEY:
